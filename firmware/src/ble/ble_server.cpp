@@ -2,6 +2,7 @@
 #include "config.h"
 #include "valves/valves.h"
 #include "rain/rain.h"
+#include "scheduler/scheduler.h"
 #include <NimBLEDevice.h>
 
 static NimBLEServer*         pServer       = nullptr;
@@ -10,11 +11,12 @@ static NimBLECharacteristic* pRainChar     = nullptr;
 static bool                  bleConnected  = false;
 
 static String buildStatusString() {
-    char buf[32];
-    sprintf(buf, "R:%d,V1:%d,V2:%d",
+    char buf[40];
+    sprintf(buf, "R:%d,V1:%d,V2:%d,%s",
         isRaining()      ? 1 : 0,
         isValveOpen(1)   ? 1 : 0,
-        isValveOpen(2)   ? 1 : 0);
+        isValveOpen(2)   ? 1 : 0,
+        getScheduleAck());           // ← "SCH:OK" or "SCH:ERR"
     return String(buf);
 }
 
@@ -29,10 +31,23 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         NimBLEDevice::startAdvertising();
     }
 };
+
 class ScheduleCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) override {
         std::string value = pChar->getValue();
-        Serial.printf("Schedule received: %s\n", value.c_str());
+        String line = String(value.c_str());
+        line.trim();
+
+        bool handled = processScheduleLine(line);
+
+        // After SCHED:END the ack is updated — notify iOS immediately
+        if (line == "SCHED:END") {
+            updateBLEStatus();
+        }
+
+        if (!handled && !line.startsWith("SCHED:")) {
+            Serial.printf("ScheduleCallbacks: unrecognised line '%s'\n", line.c_str());
+        }
     }
 };
 
@@ -51,6 +66,7 @@ class ManualCallbacks : public NimBLECharacteristicCallbacks {
         updateBLEStatus();
     }
 };
+
 void initBLE() {
     Serial.println("BLE: initializing...");
     NimBLEDevice::init(BLE_DEVICE_NAME);
@@ -89,13 +105,11 @@ void initBLE() {
     // ── Advertising ──────────────────────────────────────
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
 
-    // Put name explicitly in the advertising data packet
     NimBLEAdvertisementData advData;
     advData.setName(BLE_DEVICE_NAME);
-    advData.setFlags(0x06); // LE General Discoverable + BR/EDR not supported
+    advData.setFlags(0x06);
     pAdvertising->setAdvertisementData(advData);
 
-    // Put service UUID in scan response
     NimBLEAdvertisementData scanResponse;
     scanResponse.setCompleteServices(NimBLEUUID(SERVICE_UUID));
     pAdvertising->setScanResponseData(scanResponse);
@@ -104,8 +118,6 @@ void initBLE() {
 
     Serial.println("BLE: advertising started as '" BLE_DEVICE_NAME "'");
 }
-
-
 
 void updateBLEStatus() {
     if (!bleConnected) return;
