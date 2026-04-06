@@ -1,21 +1,31 @@
-//
-//  ContentView.swift
-//  WateringSystem
-//
-//  Created by Peter Homberg on 4/5/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var ble = BLEManager()
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundColor(.accentColor)
-            Text("Hello, world!")
+        TabView {
+            DashboardView()
+                .tabItem {
+                    Label("Dashboard", systemImage: "drop.fill")
+                }
+
+            ManualControlView()
+                .tabItem {
+                    Label("Manual", systemImage: "hand.tap.fill")
+                }
+
+            ScheduleView()
+                .tabItem {
+                    Label("Schedule", systemImage: "calendar")
+                }
+
+            SettingsView()
+                .tabItem {
+                    Label("Settings", systemImage: "gear")
+                }
         }
-        .padding()
+        .environmentObject(ble)
     }
 }
 

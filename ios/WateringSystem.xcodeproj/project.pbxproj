@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FBAD8D5E2F835C2500A69AD8 /* BLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAD8D5D2F835C2500A69AD8 /* BLEManager.swift */; };
+		FBAD8D642F835FC600A69AD8 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAD8D632F835FC600A69AD8 /* DashboardView.swift */; };
+		FBAD8D662F835FFA00A69AD8 /* ManualControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAD8D652F835FFA00A69AD8 /* ManualControlView.swift */; };
+		FBAD8D682F83602C00A69AD8 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAD8D672F83602C00A69AD8 /* ScheduleView.swift */; };
+		FBAD8D6A2F83605600A69AD8 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAD8D692F83605600A69AD8 /* SettingsView.swift */; };
+		FBAD8D6C2F8361DC00A69AD8 /* ScheduleEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAD8D6B2F8361DC00A69AD8 /* ScheduleEntry.swift */; };
 		FBE285052F826B8C00F16026 /* WateringSystemApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBE285042F826B8C00F16026 /* WateringSystemApp.swift */; };
 		FBE285072F826B8C00F16026 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBE285062F826B8C00F16026 /* ContentView.swift */; };
 		FBE285092F826B8E00F16026 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FBE285082F826B8E00F16026 /* Assets.xcassets */; };
@@ -14,6 +20,12 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		FBAD8D5D2F835C2500A69AD8 /* BLEManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEManager.swift; sourceTree = "<group>"; };
+		FBAD8D632F835FC600A69AD8 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		FBAD8D652F835FFA00A69AD8 /* ManualControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualControlView.swift; sourceTree = "<group>"; };
+		FBAD8D672F83602C00A69AD8 /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleView.swift; sourceTree = "<group>"; };
+		FBAD8D692F83605600A69AD8 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		FBAD8D6B2F8361DC00A69AD8 /* ScheduleEntry.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ScheduleEntry.swift; sourceTree = "<group>"; };
 		FBE285012F826B8C00F16026 /* WateringSystem.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WateringSystem.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FBE285042F826B8C00F16026 /* WateringSystemApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WateringSystemApp.swift; sourceTree = "<group>"; };
 		FBE285062F826B8C00F16026 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -32,6 +44,25 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		FBAD8D5F2F835C5500A69AD8 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				FBAD8D6B2F8361DC00A69AD8 /* ScheduleEntry.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		FBAD8D622F835F9F00A69AD8 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				FBAD8D632F835FC600A69AD8 /* DashboardView.swift */,
+				FBAD8D652F835FFA00A69AD8 /* ManualControlView.swift */,
+				FBAD8D672F83602C00A69AD8 /* ScheduleView.swift */,
+				FBAD8D692F83605600A69AD8 /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
 		FBE284F82F826B8C00F16026 = {
 			isa = PBXGroup;
 			children = (
@@ -53,8 +84,11 @@
 			children = (
 				FBE285042F826B8C00F16026 /* WateringSystemApp.swift */,
 				FBE285062F826B8C00F16026 /* ContentView.swift */,
+				FBAD8D622F835F9F00A69AD8 /* Views */,
+				FBAD8D5F2F835C5500A69AD8 /* Models */,
 				FBE285082F826B8E00F16026 /* Assets.xcassets */,
 				FBE2850A2F826B8E00F16026 /* Preview Content */,
+				FBAD8D5D2F835C2500A69AD8 /* BLEManager.swift */,
 			);
 			path = WateringSystem;
 			sourceTree = "<group>";
@@ -137,8 +171,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FBAD8D6A2F83605600A69AD8 /* SettingsView.swift in Sources */,
 				FBE285072F826B8C00F16026 /* ContentView.swift in Sources */,
+				FBAD8D662F835FFA00A69AD8 /* ManualControlView.swift in Sources */,
+				FBAD8D642F835FC600A69AD8 /* DashboardView.swift in Sources */,
+				FBAD8D5E2F835C2500A69AD8 /* BLEManager.swift in Sources */,
+				FBAD8D6C2F8361DC00A69AD8 /* ScheduleEntry.swift in Sources */,
 				FBE285052F826B8C00F16026 /* WateringSystemApp.swift in Sources */,
+				FBAD8D682F83602C00A69AD8 /* ScheduleView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -270,6 +310,7 @@
 				DEVELOPMENT_TEAM = 4KM7H283TG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "WateringSystem needs Bluetooth to connect to your watering controller";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -299,6 +340,7 @@
 				DEVELOPMENT_TEAM = 4KM7H283TG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "WateringSystem needs Bluetooth to connect to your watering controller";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
