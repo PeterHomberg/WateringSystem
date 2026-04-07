@@ -3,6 +3,7 @@
 #include "valves/valves.h"
 #include "rain/rain.h"
 #include "scheduler/scheduler.h"
+#include "rtc/rtc.h"
 #include <NimBLEDevice.h>
 
 static NimBLEServer*         pServer       = nullptr;
@@ -11,14 +12,21 @@ static NimBLECharacteristic* pRainChar     = nullptr;
 static bool                  bleConnected  = false;
 
 static String buildStatusString() {
-    char buf[40];
-    sprintf(buf, "R:%d,V1:%d,V2:%d,%s",
-        isRaining()      ? 1 : 0,
-        isValveOpen(1)   ? 1 : 0,
-        isValveOpen(2)   ? 1 : 0,
-        getScheduleAck());           // ← "SCH:OK" or "SCH:ERR"
+    char buf[48];
+    // Format: "R:0,V1:0,V2:0,SCH:OK,T:14:30"
+    // T field shows current RTC time — useful for the iOS app to verify sync
+    char timeBuf[8];
+    getRTCTimeString(timeBuf, sizeof(timeBuf));
+    sprintf(buf, "R:%d,V1:%d,V2:%d,%s,T:%s",
+        isRaining()    ? 1 : 0,
+        isValveOpen(1) ? 1 : 0,
+        isValveOpen(2) ? 1 : 0,
+        getScheduleAck(),
+        timeBuf);
     return String(buf);
 }
+
+// ── Server callbacks ──────────────────────────────────────────────────────────
 
 class ServerCallbacks : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
@@ -31,6 +39,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
         NimBLEDevice::startAdvertising();
     }
 };
+
+// ── Characteristic callbacks ──────────────────────────────────────────────────
 
 class ScheduleCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) override {
@@ -67,6 +77,29 @@ class ManualCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
+// TIME characteristic — iOS writes current time to sync the DS3231.
+// Write format: "TIME:2025-04-07T14:30:00W1"
+//   W<n> = weekday, firmware convention: 0=Mon … 6=Sun
+class TimeCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) override {
+        std::string value = pChar->getValue();
+        String cmd = String(value.c_str());
+        cmd.trim();
+        Serial.printf("TIME write: %s\n", cmd.c_str());
+
+        if (setRTCTimeFromString(cmd)) {
+            Serial.println("RTC: time updated successfully via BLE");
+        } else {
+            Serial.println("RTC: time update FAILED — invalid format");
+        }
+
+        // Notify iOS with updated status so it sees the new T: field
+        updateBLEStatus();
+    }
+};
+
+// ── initBLE ───────────────────────────────────────────────────────────────────
+
 void initBLE() {
     Serial.println("BLE: initializing...");
     NimBLEDevice::init(BLE_DEVICE_NAME);
@@ -78,31 +111,45 @@ void initBLE() {
 
     NimBLEService* pService = pServer->createService(SERVICE_UUID);
 
+    // STATUS — ESP32 → iOS (read + notify)
     pStatusChar = pService->createCharacteristic(
         STATUS_UUID,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
     pStatusChar->setValue(buildStatusString().c_str());
 
+    // SCHEDULE — iOS → ESP32 (write)
     NimBLECharacteristic* pScheduleChar = pService->createCharacteristic(
         SCHEDULE_UUID,
         NIMBLE_PROPERTY::WRITE
     );
     pScheduleChar->setCallbacks(new ScheduleCallbacks());
 
+    // RAIN — ESP32 → iOS (read + notify)
     pRainChar = pService->createCharacteristic(
         RAIN_UUID,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
     pRainChar->setValue("R:0");
 
+    // MANUAL — iOS → ESP32 (write)
     NimBLECharacteristic* pManualChar = pService->createCharacteristic(
         MANUAL_UUID,
         NIMBLE_PROPERTY::WRITE
     );
     pManualChar->setCallbacks(new ManualCallbacks());
 
-    // ── Advertising ──────────────────────────────────────
+    // TIME — iOS → ESP32 (write).  Read also supported so iOS can verify sync.
+    NimBLECharacteristic* pTimeChar = pService->createCharacteristic(
+        TIME_UUID,
+        NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::READ
+    );
+    pTimeChar->setCallbacks(new TimeCallbacks());
+    pTimeChar->setValue("TIME:not set");
+
+    // ── Advertising ──────────────────────────────────────────────────────────
+    pService->start();
+
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
 
     NimBLEAdvertisementData advData;
@@ -118,6 +165,8 @@ void initBLE() {
 
     Serial.println("BLE: advertising started as '" BLE_DEVICE_NAME "'");
 }
+
+// ── updateBLEStatus ───────────────────────────────────────────────────────────
 
 void updateBLEStatus() {
     if (!bleConnected) return;

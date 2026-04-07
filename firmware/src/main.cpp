@@ -6,6 +6,7 @@
 #include "ble/ble_server.h"
 #include "valves/valves.h"
 #include "rain/rain.h"
+#include "rtc/rtc.h"
 #include "scheduler/scheduler.h"
 
 void setup() {
@@ -22,19 +23,23 @@ void setup() {
 
     Wire.begin(SDA_PIN, SCL_PIN);
     initDisplay();
+    initRTC();           // DS3231 — must be after Wire.begin()
     initValves();
     initRainSensor();
-    initScheduler();   // ← loads persisted schedule from flash
+    initScheduler();     // loads persisted schedule from flash
     initBLE();
 
+    char timeBuf[8];
+    getRTCTimeString(timeBuf, sizeof(timeBuf));
     updateDisplayStatus(isBLEConnected(), isRaining(),
-                        isValveOpen(1), isValveOpen(2));
+                        isValveOpen(1), isValveOpen(2), timeBuf);
 
     Serial.println("Watering system started");
 }
 
 void loop() {
-    // Simulate rain toggling every 10 seconds for testing
+    // ── Rain simulation (testing only) ───────────────────────────────────────
+    // Remove or gate on a DEBUG flag when real rain sensor hardware is connected
     static unsigned long lastRainToggle = 0;
     static bool simRaining = false;
     if (millis() - lastRainToggle > 10000) {
@@ -45,36 +50,37 @@ void loop() {
         updateBLEStatus();
     }
 
-    // Update rain sensor every 2 seconds
+    // ── Rain sensor (real GPIO) ───────────────────────────────────────────────
     static unsigned long lastRainCheck = 0;
     if (millis() - lastRainCheck > 2000) {
         lastRainCheck = millis();
         updateRainSensor();
     }
 
-    // Check schedule every minute
-    // TODO: replace with real DS3231 time once RTC module is implemented
-    // When RTC is ready, replace the lines below with:
-    //   DateTime now = rtc.now();
-    //   uint8_t weekday = now.dayOfTheWeek();  // DS3231: 0=Sun … map to 0=Mon if needed
-    //   checkSchedule(weekday, now.hour(), now.minute());
+    // ── Scheduler tick — every 30 s is enough (minute resolution) ────────────
     static unsigned long lastScheduleCheck = 0;
-    if (millis() - lastScheduleCheck > 60000) {
+    if (millis() - lastScheduleCheck > 30000) {
         lastScheduleCheck = millis();
-        // Placeholder — scheduler tick does nothing without real time yet
-        // checkSchedule(weekday, hour, minute);
-        Serial.println("Schedule tick — waiting for RTC");
+
+        RtcTime now;
+        if (isRTCReady() && getRTCTime(now)) {
+            checkSchedule(now.weekday, now.hour, now.minute);
+        } else {
+            Serial.println("Schedule tick — RTC not ready or time not set");
+        }
     }
 
-    // Update display every second
+    // ── Display refresh — every second ───────────────────────────────────────
     static unsigned long lastDisplay = 0;
     if (millis() - lastDisplay > 1000) {
         lastDisplay = millis();
+        char timeBuf[8];
+        getRTCTimeString(timeBuf, sizeof(timeBuf));
         updateDisplayStatus(isBLEConnected(), isRaining(),
-                            isValveOpen(1), isValveOpen(2));
+                            isValveOpen(1), isValveOpen(2), timeBuf);
     }
 
-    // Update BLE status every 5 seconds
+    // ── BLE status notify — every 5 s ────────────────────────────────────────
     static unsigned long lastBLE = 0;
     if (millis() - lastBLE > 5000) {
         lastBLE = millis();

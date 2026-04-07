@@ -19,8 +19,8 @@ void initDisplay() {
         Serial.println("Display not found!");
         while (true);
     }
-    sendOLEDCommand(0xA1);
-    sendOLEDCommand(0xC0);
+    sendOLEDCommand(0xA1);  // fix horizontal mirror (SSD1312 mounting quirk)
+    sendOLEDCommand(0xC0);  // COM scan normal — top to bottom
     display.clearDisplay();
     display.display();
 }
@@ -41,19 +41,53 @@ void clearArea(int x, int y, int w, int h) {
     display.display();
 }
 
+// Display layout (128×64):
+//
+//   Y= 0  "Watering System"        +  "HH:MM" right-aligned
+//   Y=10  ─────────────────────────────────────── divider
+//   Y=14  "BLE: Connected / Advertising"
+//   Y=24  "Rain: No / YES - inhibit"
+//   Y=34  "V1: OPEN/closed    V2: OPEN/closed"
+//   Y=44  ─────────────────────────────────────── divider
+//   Y=48  "Use nRF Connect"
+//
+// The time is shown in the top-right corner (size 1 = 6px/char, "HH:MM" = 30px wide).
+// X start = 128 - 5*6 = 98.
+
 void updateDisplayStatus(bool connected, bool rain,
-                         bool valve1, bool valve2) {
+                         bool valve1, bool valve2,
+                         const char* timeStr) {
     display.clearDisplay();
-    showText(0,  0, "Watering System", 1);
+
+    // Title row
+    showText(0, 0, "Watering System", 1);
+
+    // Time — right-aligned in title row
+    // "HH:MM" is 5 chars × 6px = 30px wide at size 1
+    showText(98, 0, timeStr, 1);
+
+    // Divider
     display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
-    showText(0, 14, "BLE:");
+
+    // BLE status
+    showText(0,  14, "BLE:");
     showText(30, 14, connected ? "Connected   " : "Advertising ");
-    showText(0, 26, "Rain:");
-    showText(36, 26, rain ? "YES - inhibit" : "No          ");
-    showText(0, 38, "V1:");
-    showText(20, 38, valve1 ? "OPEN " : "closed");
-    showText(64, 38, "V2:");
-    showText(84, 38, valve2 ? "OPEN " : "closed");
-    showText(0, 52, "Use nRF Connect");
+
+    // Rain status
+    showText(0,  24, "Rain:");
+    showText(36, 24, rain ? "YES - inhibit" : "No          ");
+
+    // Valve states
+    showText(0,  34, "V1:");
+    showText(20, 34, valve1 ? "OPEN  " : "closed");
+    showText(68, 34, "V2:");
+    showText(88, 34, valve2 ? "OPEN  " : "closed");
+
+    // Lower divider
+    display.drawLine(0, 44, 127, 44, SSD1306_WHITE);
+
+    // Hint line
+    showText(0, 48, "Use nRF Connect");
+
     display.display();
 }
