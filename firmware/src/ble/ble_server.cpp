@@ -12,17 +12,26 @@ static NimBLECharacteristic* pRainChar     = nullptr;
 static bool                  bleConnected  = false;
 
 static String buildStatusString() {
-    char buf[48];
-    // Format: "R:0,V1:0,V2:0,SCH:OK,T:14:30"
-    // T field shows current RTC time — useful for the iOS app to verify sync
+    char buf[56];
     char timeBuf[8];
     getRTCTimeString(timeBuf, sizeof(timeBuf));
-    sprintf(buf, "R:%d,V1:%d,V2:%d,%s,T:%s",
+    // Format: "R:0,L:42,V1:0,V2:0,SCH:OK,T:14:30"
+    //   R  = digital rain flag (0/1)
+    //   L  = analog wetness level 0–100
+    sprintf(buf, "R:%d,L:%d,V1:%d,V2:%d,%s,T:%s",
         isRaining()    ? 1 : 0,
+        getRainLevel(),
         isValveOpen(1) ? 1 : 0,
         isValveOpen(2) ? 1 : 0,
         getScheduleAck(),
         timeBuf);
+    return String(buf);
+}
+
+static String buildRainString() {
+    char buf[16];
+    // Format: "R:0,L:42"
+    sprintf(buf, "R:%d,L:%d", isRaining() ? 1 : 0, getRainLevel());
     return String(buf);
 }
 
@@ -50,7 +59,6 @@ class ScheduleCallbacks : public NimBLECharacteristicCallbacks {
 
         bool handled = processScheduleLine(line);
 
-        // After SCHED:END the ack is updated — notify iOS immediately
         if (line == "SCHED:END") {
             updateBLEStatus();
         }
@@ -77,9 +85,6 @@ class ManualCallbacks : public NimBLECharacteristicCallbacks {
     }
 };
 
-// TIME characteristic — iOS writes current time to sync the DS3231.
-// Write format: "TIME:2025-04-07T14:30:00W1"
-//   W<n> = weekday, firmware convention: 0=Mon … 6=Sun
 class TimeCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) override {
         std::string value = pChar->getValue();
@@ -93,7 +98,6 @@ class TimeCallbacks : public NimBLECharacteristicCallbacks {
             Serial.println("RTC: time update FAILED — invalid format");
         }
 
-        // Notify iOS with updated status so it sees the new T: field
         updateBLEStatus();
     }
 };
@@ -104,7 +108,6 @@ void initBLE() {
     Serial.println("BLE: initializing...");
     NimBLEDevice::init(BLE_DEVICE_NAME);
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-    Serial.println("BLE: device initialized");
 
     pServer = NimBLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
@@ -126,11 +129,12 @@ void initBLE() {
     pScheduleChar->setCallbacks(new ScheduleCallbacks());
 
     // RAIN — ESP32 → iOS (read + notify)
+    // Now carries both digital flag and analog level: "R:0,L:42"
     pRainChar = pService->createCharacteristic(
         RAIN_UUID,
         NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
     );
-    pRainChar->setValue("R:0");
+    pRainChar->setValue(buildRainString().c_str());
 
     // MANUAL — iOS → ESP32 (write)
     NimBLECharacteristic* pManualChar = pService->createCharacteristic(
@@ -139,7 +143,7 @@ void initBLE() {
     );
     pManualChar->setCallbacks(new ManualCallbacks());
 
-    // TIME — iOS → ESP32 (write).  Read also supported so iOS can verify sync.
+    // TIME — iOS → ESP32 (write + read)
     NimBLECharacteristic* pTimeChar = pService->createCharacteristic(
         TIME_UUID,
         NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::READ
@@ -147,7 +151,6 @@ void initBLE() {
     pTimeChar->setCallbacks(new TimeCallbacks());
     pTimeChar->setValue("TIME:not set");
 
-    // ── Advertising ──────────────────────────────────────────────────────────
     pService->start();
 
     NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
@@ -173,9 +176,8 @@ void updateBLEStatus() {
     String status = buildStatusString();
     pStatusChar->setValue(status.c_str());
     pStatusChar->notify();
-    char rainStr[8];
-    sprintf(rainStr, "R:%d", isRaining() ? 1 : 0);
-    pRainChar->setValue(rainStr);
+    String rain = buildRainString();
+    pRainChar->setValue(rain.c_str());
     pRainChar->notify();
 }
 

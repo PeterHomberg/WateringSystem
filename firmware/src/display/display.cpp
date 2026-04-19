@@ -4,7 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-static Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, 
+static Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT,
                                  &Wire, OLED_RESET);
 
 static void sendOLEDCommand(uint8_t cmd) {
@@ -43,50 +43,64 @@ void clearArea(int x, int y, int w, int h) {
 
 // Display layout (128×64):
 //
-//   Y= 0  "Watering System"        +  "HH:MM" right-aligned
-//   Y=10  ─────────────────────────────────────── divider
+//   Y= 0  "Watering System"              HH:MM (right-aligned)
+//   Y=10  ──────────────────────────────────────
 //   Y=14  "BLE: Connected / Advertising"
-//   Y=24  "Rain: No / YES - inhibit"
+//   Y=24  "Rain: No / YES  [███░░] 42%"
 //   Y=34  "V1: OPEN/closed    V2: OPEN/closed"
-//   Y=44  ─────────────────────────────────────── divider
+//   Y=44  ──────────────────────────────────────
 //   Y=48  "Use nRF Connect"
-//
-// The time is shown in the top-right corner (size 1 = 6px/char, "HH:MM" = 30px wide).
-// X start = 128 - 5*6 = 98.
 
-void updateDisplayStatus(bool connected, bool rain,
+static void drawWetnessBar(int x, int y, uint8_t level) {
+    // 5-segment bar, each segment 5px wide × 6px tall, 1px gap between
+    // Total width = 5*5 + 4*1 = 29px
+    const int segW = 5, segH = 6, gap = 1;
+    uint8_t filled = (level * 5 + 50) / 100;  // 0–5 segments
+    for (uint8_t i = 0; i < 5; i++) {
+        int sx = x + i * (segW + gap);
+        if (i < filled) {
+            display.fillRect(sx, y, segW, segH, SSD1306_WHITE);
+        } else {
+            display.drawRect(sx, y, segW, segH, SSD1306_WHITE);
+        }
+    }
+}
+
+void updateDisplayStatus(bool connected, bool rain, uint8_t rainLevel,
                          bool valve1, bool valve2,
                          const char* timeStr) {
     display.clearDisplay();
 
-    // Title row
+    // Title + time
     showText(0, 0, "Watering System", 1);
-
-    // Time — right-aligned in title row
-    // "HH:MM" is 5 chars × 6px = 30px wide at size 1
     showText(98, 0, timeStr, 1);
 
-    // Divider
     display.drawLine(0, 10, 127, 10, SSD1306_WHITE);
 
-    // BLE status
+    // BLE
     showText(0,  14, "BLE:");
     showText(30, 14, connected ? "Connected   " : "Advertising ");
 
-    // Rain status
-    showText(0,  24, "Rain:");
-    showText(36, 24, rain ? "YES - inhibit" : "No          ");
+    // Rain — digital status + analog bar + percentage
+    showText(0, 24, "Rain:");
+    if (rain) {
+        showText(36, 24, "YES ");
+    } else {
+        showText(36, 24, "No  ");
+    }
+    drawWetnessBar(60, 24, rainLevel);   // bar at x=60
+    char pctBuf[6];
+    snprintf(pctBuf, sizeof(pctBuf), "%3d%%", rainLevel);
+    showText(94, 24, pctBuf);           // "42%" at x=94
 
-    // Valve states
+    // Valves
     showText(0,  34, "V1:");
     showText(20, 34, valve1 ? "OPEN  " : "closed");
     showText(68, 34, "V2:");
     showText(88, 34, valve2 ? "OPEN  " : "closed");
 
-    // Lower divider
     display.drawLine(0, 44, 127, 44, SSD1306_WHITE);
 
-    // Hint line
     showText(0, 48, "Use nRF Connect");
 
     display.display();

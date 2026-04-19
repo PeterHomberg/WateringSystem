@@ -12,7 +12,6 @@
 void setup() {
     Serial.begin(115200);
 
-    // Initialize NVS — required for BLE stack and Preferences (scheduler flash)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
         ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -23,45 +22,33 @@ void setup() {
 
     Wire.begin(SDA_PIN, SCL_PIN);
     initDisplay();
-    initRTC();           // DS3231 — must be after Wire.begin()
+    initRTC();
     initValves();
-    initRainSensor();
-    initScheduler();     // loads persisted schedule from flash
+    initRainSensor();      // real hardware — simulation loop removed
+    initScheduler();
     initBLE();
 
     char timeBuf[8];
     getRTCTimeString(timeBuf, sizeof(timeBuf));
-    updateDisplayStatus(isBLEConnected(), isRaining(),
+    updateDisplayStatus(isBLEConnected(), isRaining(), getRainLevel(),
                         isValveOpen(1), isValveOpen(2), timeBuf);
 
     Serial.println("Watering system started");
 }
 
 void loop() {
-    // ── Rain simulation (testing only) ───────────────────────────────────────
-    // Remove or gate on a DEBUG flag when real rain sensor hardware is connected
-    static unsigned long lastRainToggle = 0;
-    static bool simRaining = false;
-    if (millis() - lastRainToggle > 10000) {
-        lastRainToggle = millis();
-        simRaining = !simRaining;
-        simulateRain(simRaining);
-        Serial.printf("Rain simulated: %s\n", simRaining ? "YES" : "No");
-        updateBLEStatus();
-    }
-
-    // ── Rain sensor (real GPIO) ───────────────────────────────────────────────
+    // ── Rain sensor — read both digital and analog every 2 s ─────────────────
     static unsigned long lastRainCheck = 0;
     if (millis() - lastRainCheck > 2000) {
         lastRainCheck = millis();
         updateRainSensor();
+        updateBLEStatus();   // push updated R/L values to iOS immediately
     }
 
-    // ── Scheduler tick — every 30 s is enough (minute resolution) ────────────
+    // ── Scheduler tick — every 30 s ───────────────────────────────────────────
     static unsigned long lastScheduleCheck = 0;
     if (millis() - lastScheduleCheck > 30000) {
         lastScheduleCheck = millis();
-
         RtcTime now;
         if (isRTCReady() && getRTCTime(now)) {
             checkSchedule(now.weekday, now.hour, now.minute);
@@ -70,17 +57,17 @@ void loop() {
         }
     }
 
-    // ── Display refresh — every second ───────────────────────────────────────
+    // ── Display refresh — every second ────────────────────────────────────────
     static unsigned long lastDisplay = 0;
     if (millis() - lastDisplay > 1000) {
         lastDisplay = millis();
         char timeBuf[8];
         getRTCTimeString(timeBuf, sizeof(timeBuf));
-        updateDisplayStatus(isBLEConnected(), isRaining(),
+        updateDisplayStatus(isBLEConnected(), isRaining(), getRainLevel(),
                             isValveOpen(1), isValveOpen(2), timeBuf);
     }
 
-    // ── BLE status notify — every 5 s ────────────────────────────────────────
+    // ── BLE status notify — every 5 s ─────────────────────────────────────────
     static unsigned long lastBLE = 0;
     if (millis() - lastBLE > 5000) {
         lastBLE = millis();
