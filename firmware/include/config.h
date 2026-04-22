@@ -8,6 +8,12 @@
 #define SDA_PIN         5
 #define SCL_PIN         6
 
+// ─── WiFi ─────────────────────────────────────────────────
+#define WIFI_SSID              "Rainy"      // ← your network name
+#define WIFI_PASSWORD          "@Gehlenberg2"  // ← your password
+#define WIFI_CONNECT_TIMEOUT_MS  15000         // give up after 15 s → BLE-only
+#define WEB_SERVER_PORT        80
+
 // ─── BLE ──────────────────────────────────────────────────
 #define BLE_DEVICE_NAME     "WateringSystem"
 #define SERVICE_UUID        "12345678-1234-1234-1234-123456789000"
@@ -22,11 +28,9 @@
 #define VALVE2_PIN      4
 
 // ─── Rain sensor ──────────────────────────────────────────
-#define RAIN_PIN_DIGITAL    1       // GPIO1  — active LOW (LOW = raining)
-#define RAIN_PIN_ANALOG     0       // GPIO0  — ADC1_0, lower value = wetter
+#define RAIN_PIN_DIGITAL    1       // GPIO1 — active LOW (LOW = raining)
+#define RAIN_PIN_ANALOG     0       // GPIO0 — ADC1_0, lower value = wetter
 
-// Analog thresholds (12-bit ADC, 0–4095)
-// Sensor output is high (~4095) when dry, falls as surface gets wet.
-// Tune these after physical testing with your specific sensor module.
-#define RAIN_ANALOG_DRY_THRESHOLD   3500    // above this → dry
-#define RAIN_ANALOG_WET_THRESHOLD   1500    // below this → heavy rain
+// Analog thresholds (12-bit ADC, 0–4095). Tune after physical testing.
+#define RAIN_ANALOG_DRY_THRESHOLD   3500
+#define RAIN_ANALOG_WET_THRESHOLD   1500

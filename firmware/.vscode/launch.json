@@ -12,8 +12,8 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug",
-            "executable": "C:/PeterWork/Source/ESP32/VSCode/Watering System/firmware/.pio/build/esp32-c3-devkitc-02/firmware.elf",
-            "projectEnvName": "esp32-c3-devkitc-02",
+            "executable": "C:/PeterWork/Source/ESP32/VSCode/Watering System/firmware/.pio/build/esp32c3/firmware.elf",
+            "projectEnvName": "esp32c3",
             "toolchainBinDir": "C:/Users/Peter/.platformio/packages/toolchain-riscv32-esp/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "preLaunchTask": {
@@ -25,8 +25,8 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (skip Pre-Debug)",
-            "executable": "C:/PeterWork/Source/ESP32/VSCode/Watering System/firmware/.pio/build/esp32-c3-devkitc-02/firmware.elf",
-            "projectEnvName": "esp32-c3-devkitc-02",
+            "executable": "C:/PeterWork/Source/ESP32/VSCode/Watering System/firmware/.pio/build/esp32c3/firmware.elf",
+            "projectEnvName": "esp32c3",
             "toolchainBinDir": "C:/Users/Peter/.platformio/packages/toolchain-riscv32-esp/bin",
             "internalConsoleOptions": "openOnSessionStart"
         },
@@ -34,8 +34,8 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (without uploading)",
-            "executable": "C:/PeterWork/Source/ESP32/VSCode/Watering System/firmware/.pio/build/esp32-c3-devkitc-02/firmware.elf",
-            "projectEnvName": "esp32-c3-devkitc-02",
+            "executable": "C:/PeterWork/Source/ESP32/VSCode/Watering System/firmware/.pio/build/esp32c3/firmware.elf",
+            "projectEnvName": "esp32c3",
             "toolchainBinDir": "C:/Users/Peter/.platformio/packages/toolchain-riscv32-esp/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "loadMode": "manual"

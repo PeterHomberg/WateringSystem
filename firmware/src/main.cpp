@@ -8,6 +8,21 @@
 #include "rain/rain.h"
 #include "rtc/rtc.h"
 #include "scheduler/scheduler.h"
+#include "wifi_manager/wifi_manager.h"
+#include "web_server/web_server.h"
+
+static void refreshDisplay() {
+    char timeBuf[8];
+    getRTCTimeString(timeBuf, sizeof(timeBuf));
+    String ip = getWiFiIP();
+    updateDisplayStatus(
+        isBLEConnected(),
+        isWiFiConnected(), ip.c_str(),
+        isRaining(), getRainLevel(),
+        isValveOpen(1), isValveOpen(2),
+        timeBuf
+    );
+}
 
 void setup() {
     Serial.begin(115200);
@@ -24,50 +39,53 @@ void setup() {
     initDisplay();
     initRTC();
     initValves();
-    initRainSensor();      // real hardware — simulation loop removed
+    initRainSensor();
     initScheduler();
+    initWiFi();
+
+    if (isWiFiConnected()) {
+        initWebServer();
+    }
+
     initBLE();
-
-    char timeBuf[8];
-    getRTCTimeString(timeBuf, sizeof(timeBuf));
-    updateDisplayStatus(isBLEConnected(), isRaining(), getRainLevel(),
-                        isValveOpen(1), isValveOpen(2), timeBuf);
-
+    refreshDisplay();
     Serial.println("Watering system started");
 }
 
 void loop() {
-    // ── Rain sensor — read both digital and analog every 2 s ─────────────────
-    static unsigned long lastRainCheck = 0;
-    if (millis() - lastRainCheck > 2000) {
-        lastRainCheck = millis();
-        updateRainSensor();
-        updateBLEStatus();   // push updated R/L values to iOS immediately
+    // ── Web server — must be polled every loop iteration ─────────────────────
+    if (isWiFiConnected()) {
+        handleWebServer();
     }
 
-    // ── Scheduler tick — every 30 s ───────────────────────────────────────────
-    static unsigned long lastScheduleCheck = 0;
-    if (millis() - lastScheduleCheck > 30000) {
-        lastScheduleCheck = millis();
+    // ── Rain sensor — every 2 s ───────────────────────────────────────────────
+    static unsigned long lastRain = 0;
+    if (millis() - lastRain > 2000) {
+        lastRain = millis();
+        updateRainSensor();
+        updateBLEStatus();
+    }
+
+    // ── Scheduler — every 30 s ────────────────────────────────────────────────
+    static unsigned long lastSched = 0;
+    if (millis() - lastSched > 30000) {
+        lastSched = millis();
         RtcTime now;
         if (isRTCReady() && getRTCTime(now)) {
             checkSchedule(now.weekday, now.hour, now.minute);
         } else {
-            Serial.println("Schedule tick — RTC not ready or time not set");
+            Serial.println("Schedule tick — RTC not ready");
         }
     }
 
-    // ── Display refresh — every second ────────────────────────────────────────
+    // ── Display — every second ────────────────────────────────────────────────
     static unsigned long lastDisplay = 0;
     if (millis() - lastDisplay > 1000) {
         lastDisplay = millis();
-        char timeBuf[8];
-        getRTCTimeString(timeBuf, sizeof(timeBuf));
-        updateDisplayStatus(isBLEConnected(), isRaining(), getRainLevel(),
-                            isValveOpen(1), isValveOpen(2), timeBuf);
+        refreshDisplay();
     }
 
-    // ── BLE status notify — every 5 s ─────────────────────────────────────────
+    // ── BLE status — every 5 s ────────────────────────────────────────────────
     static unsigned long lastBLE = 0;
     if (millis() - lastBLE > 5000) {
         lastBLE = millis();
