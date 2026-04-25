@@ -21,27 +21,28 @@ enum BLEState {
 class BLEManager: NSObject, ObservableObject {
 
     // Published properties — SwiftUI views update automatically when these change
-    @Published var bleState: BLEState = .disconnected
-    @Published var isRaining: Bool    = false
-    @Published var valve1Open: Bool   = false
-    @Published var valve2Open: Bool   = false
-    @Published var scheduleAck: String = ""          // "SCH:OK" or "SCH:ERR"
-    @Published var lastError: String  = ""
+    @Published var bleState: BLEState  = .disconnected
+    @Published var isRaining: Bool     = false
+    @Published var rainLevel: Int      = 0        // 0–100 from analog sensor
+    @Published var valve1Open: Bool    = false
+    @Published var valve2Open: Bool    = false
+    @Published var scheduleAck: String = ""       // "SCH:OK" or "SCH:ERR"
+    @Published var currentTime: String = ""       // "HH:MM" from RTC
+    @Published var lastError: String   = ""
 
     // Internal CoreBluetooth objects
-    private var centralManager:   CBCentralManager!
-    private var peripheral:       CBPeripheral?
-    private var statusChar:       CBCharacteristic?
-    private var scheduleChar:     CBCharacteristic?
-    private var rainChar:         CBCharacteristic?
-    private var manualChar:       CBCharacteristic?
+    private var centralManager:  CBCentralManager!
+    private var peripheral:      CBPeripheral?
+    private var statusChar:      CBCharacteristic?
+    private var scheduleChar:    CBCharacteristic?
+    private var rainChar:        CBCharacteristic?
+    private var manualChar:      CBCharacteristic?
 
     // Auto-reconnect
     private var autoReconnect = true
 
     override init() {
         super.init()
-        // CBCentralManager triggers centralManagerDidUpdateState when ready
         centralManager = CBCentralManager(delegate: self, queue: nil)
     }
 
@@ -76,14 +77,13 @@ class BLEManager: NSObject, ObservableObject {
     func sendSchedule(_ entries: [ScheduleEntry]) {
         var lines: [String] = ["SCHED:BEGIN"]
         for entry in entries {
-            let days = entry.dayMask.bleString         // e.g. "Mon+Wed+Fri"
+            let days = entry.dayMask.bleString
             let time = String(format: "%02d:%02d", entry.hour, entry.minute)
             let zone = "V\(entry.valve)"
             lines.append("SCHED:\(zone),\(days),\(time),\(entry.durationMin)")
         }
         lines.append("SCHED:END")
 
-        // Small delay between writes so ESP32 has time to process each line
         for (index, line) in lines.enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.15) {
                 self.write(line, to: self.scheduleChar)
@@ -104,20 +104,39 @@ class BLEManager: NSObject, ObservableObject {
         p.writeValue(data, for: char, type: .withoutResponse)
     }
 
-    // Parse STATUS string: "R:0,V1:0,V2:0,SCH:OK"
+    // Parse STATUS string: "R:0,L:42,V1:0,V2:0,SCH:OK,T:14:30"
+    // Also handles old format without L and T fields for backwards compatibility
     private func parseStatus(_ value: String) {
         let parts = value.split(separator: ",")
         for part in parts {
-            let kv = part.split(separator: ":")
+            let kv = part.split(separator: ":", maxSplits: 1)
             guard kv.count == 2 else { continue }
             let key = String(kv[0])
             let val = String(kv[1])
             switch key {
-            case "R":   isRaining  = val == "1"
-            case "V1":  valve1Open = val == "1"
-            case "V2":  valve2Open = val == "1"
+            case "R":   isRaining   = val == "1"
+            case "L":   rainLevel   = Int(val) ?? 0
+            case "V1":  valve1Open  = val == "1"
+            case "V2":  valve2Open  = val == "1"
             case "SCH": scheduleAck = "SCH:\(val)"
+            case "T":   currentTime = val
             default:    break
+            }
+        }
+    }
+
+    // Parse RAIN characteristic string: "R:0,L:42"
+    private func parseRain(_ value: String) {
+        let parts = value.split(separator: ",")
+        for part in parts {
+            let kv = part.split(separator: ":", maxSplits: 1)
+            guard kv.count == 2 else { continue }
+            let key = String(kv[0])
+            let val = String(kv[1])
+            switch key {
+            case "R": isRaining = val == "1"
+            case "L": rainLevel = Int(val) ?? 0
+            default:  break
             }
         }
     }
@@ -163,13 +182,12 @@ extension BLEManager: CBCentralManagerDelegate {
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
         print("BLE: disconnected")
-        bleState = .disconnected
+        bleState   = .disconnected
         statusChar  = nil
         scheduleChar = nil
         rainChar    = nil
         manualChar  = nil
 
-        // Auto-reconnect after 2 seconds
         if autoReconnect {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 self.startScanning()
@@ -209,13 +227,14 @@ extension BLEManager: CBPeripheralDelegate {
             switch char.uuid {
             case STATUS_UUID:
                 statusChar = char
-                peripheral.setNotifyValue(true, for: char)   // subscribe to notifications
-                peripheral.readValue(for: char)               // read current value immediately
+                peripheral.setNotifyValue(true, for: char)
+                peripheral.readValue(for: char)
             case SCHEDULE_UUID:
                 scheduleChar = char
             case RAIN_UUID:
                 rainChar = char
                 peripheral.setNotifyValue(true, for: char)
+                peripheral.readValue(for: char)
             case MANUAL_UUID:
                 manualChar = char
             default:
@@ -239,7 +258,7 @@ extension BLEManager: CBPeripheralDelegate {
                 self.parseStatus(str)
             case RAIN_UUID:
                 print("BLE rain: \(str)")
-                self.isRaining = str == "R:1"
+                self.parseRain(str)
             default:
                 break
             }
