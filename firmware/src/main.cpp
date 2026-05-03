@@ -35,13 +35,14 @@ void setup() {
     }
     Serial.println("NVS initialized");
 
+    initWiFi();                    // ← moved here, before anything else
+
     Wire.begin(SDA_PIN, SCL_PIN);
     initDisplay();
     initRTC();
     initValves();
     initRainSensor();
     initScheduler();
-    initWiFi();
 
     if (isWiFiConnected()) {
         initWebServer();
@@ -51,7 +52,6 @@ void setup() {
     refreshDisplay();
     Serial.println("Watering system started");
 }
-
 void loop() {
     // ── Web server — must be polled every loop iteration ─────────────────────
     if (isWiFiConnected()) {

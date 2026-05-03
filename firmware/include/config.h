@@ -9,9 +9,14 @@
 #define SCL_PIN         6
 
 // ─── WiFi ─────────────────────────────────────────────────
-#define WIFI_SSID              "Rainy"      // ← your network name
-#define WIFI_PASSWORD          "@Gehlenberg2"  // ← your password
-#define WIFI_CONNECT_TIMEOUT_MS  15000         // give up after 15 s → BLE-only
+#define WIFI_SSID              "CPE2G_2G0"      // ← your network name
+#define WIFI_PASSWORD          "zllinkcpe1234560"  // ← your password
+
+//#define WIFI_SSID              "Rainy"      // ← your network name
+//#define WIFI_PASSWORD          "@Gehlenberg2"  // ← your password
+
+
+#define WIFI_CONNECT_TIMEOUT_MS  30000         // give up after 15 s → BLE-only
 #define WEB_SERVER_PORT        80
 
 // ─── BLE ──────────────────────────────────────────────────
@@ -24,8 +29,8 @@
 #define TIME_UUID           "12345678-1234-1234-1234-123456789005"
 
 // ─── Valves ───────────────────────────────────────────────
-#define VALVE1_PIN      3
-#define VALVE2_PIN      4
+#define VALVE1_PIN      2
+#define VALVE2_PIN      3
 
 // ─── Rain sensor ──────────────────────────────────────────
 #define RAIN_PIN_DIGITAL    1       // GPIO1 — active LOW (LOW = raining)

@@ -48,6 +48,10 @@ void initRainSensor() {
     Serial.println("Rain sensor initialized (digital GPIO1, analog GPIO0)");
 }
 
+bool oldRainDetected = false;
+int oldRaw = 0;
+uint8_t oldRainLevel =0;
+
 void updateRainSensor() {
     if (simMode) {
         rainDetected = simState;
@@ -62,8 +66,15 @@ void updateRainSensor() {
     int raw  = readAnalogAvg(RAIN_PIN_ANALOG);
     rainLevel = adcToWetness(raw);
 
-    Serial.printf("Rain sensor — digital: %s  analog raw: %d  level: %d%%\n",
-        rainDetected ? "RAIN" : "dry", raw, rainLevel);
+    if(rainDetected != oldRainDetected || raw != oldRaw || rainLevel != oldRainLevel)
+    {
+        oldRainDetected = rainDetected;
+        oldRainLevel = rainLevel;
+        oldRaw = raw;
+        Serial.printf("Rain sensor — digital: %s  analog raw: %d  level: %d%%\n",
+            rainDetected ? "RAIN" : "dry", raw, rainLevel);
+
+    }
 }
 
 bool isRaining() {

@@ -12,11 +12,11 @@ void initValves() {
 
 void openValve(int valve) {
     if (valve == 1) {
-        digitalWrite(VALVE1_PIN, HIGH);
+        digitalWrite(VALVE1_PIN, OPEN);
         valve1State = true;
         Serial.println("Valve 1 opened");
     } else if (valve == 2) {
-        digitalWrite(VALVE2_PIN, HIGH);
+        digitalWrite(VALVE2_PIN, OPEN);
         valve2State = true;
         Serial.println("Valve 2 opened");
     }
@@ -24,11 +24,11 @@ void openValve(int valve) {
 
 void closeValve(int valve) {
     if (valve == 1) {
-        digitalWrite(VALVE1_PIN, LOW);
+        digitalWrite(VALVE1_PIN, CLOSE);
         valve1State = false;
         Serial.println("Valve 1 closed");
     } else if (valve == 2) {
-        digitalWrite(VALVE2_PIN, LOW);
+        digitalWrite(VALVE2_PIN, CLOSE);
         valve2State = false;
         Serial.println("Valve 2 closed");
     }
