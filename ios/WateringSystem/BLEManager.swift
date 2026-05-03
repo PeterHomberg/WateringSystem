@@ -7,6 +7,7 @@ private let STATUS_UUID    = CBUUID(string: "12345678-1234-1234-1234-12345678900
 private let SCHEDULE_UUID  = CBUUID(string: "12345678-1234-1234-1234-123456789002")
 private let RAIN_UUID      = CBUUID(string: "12345678-1234-1234-1234-123456789003")
 private let MANUAL_UUID    = CBUUID(string: "12345678-1234-1234-1234-123456789004")
+private let TIME_UUID      = CBUUID(string: "12345678-1234-1234-1234-123456789005")
 
 // ── Connection state ──────────────────────────────────────────────────────────
 enum BLEState {
@@ -28,6 +29,7 @@ class BLEManager: NSObject, ObservableObject {
     @Published var valve2Open: Bool    = false
     @Published var scheduleAck: String = ""       // "SCH:OK" or "SCH:ERR"
     @Published var currentTime: String = ""       // "HH:MM" from RTC
+    @Published var timeSynced: Bool    = false    // true after successful time sync
     @Published var lastError: String   = ""
 
     // Internal CoreBluetooth objects
@@ -37,6 +39,7 @@ class BLEManager: NSObject, ObservableObject {
     private var scheduleChar:    CBCharacteristic?
     private var rainChar:        CBCharacteristic?
     private var manualChar:      CBCharacteristic?
+    private var timeChar:        CBCharacteristic?
 
     // Auto-reconnect
     private var autoReconnect = true
@@ -92,6 +95,11 @@ class BLEManager: NSObject, ObservableObject {
         }
     }
 
+    // Manually trigger a time sync — exposed for the Settings "Sync Time" button
+    func syncTime() {
+        sendCurrentTime()
+    }
+
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     private func write(_ value: String, to characteristic: CBCharacteristic?) {
@@ -101,7 +109,35 @@ class BLEManager: NSObject, ObservableObject {
             print("BLE write failed — not connected or characteristic missing")
             return
         }
-        p.writeValue(data, for: char, type: .withoutResponse)
+        p.writeValue(data, for: char, type: .withResponse)
+    }
+
+    // Build and send TIME string from iPhone's current clock
+    // Format: "TIME:2026-05-03,14:32:00,6"
+    //   date:    YYYY-MM-DD
+    //   time:    HH:MM:SS
+    //   weekday: 0=Mon … 6=Sun (matches ESP32 scheduler bitmask convention)
+    private func sendCurrentTime() {
+        let now = Date()
+        let cal = Calendar.current
+
+        let year    = cal.component(.year,   from: now)
+        let month   = cal.component(.month,  from: now)
+        let day     = cal.component(.day,    from: now)
+        let hour    = cal.component(.hour,   from: now)
+        let minute  = cal.component(.minute, from: now)
+        let second  = cal.component(.second, from: now)
+
+        // Calendar.weekday: 1=Sun … 7=Sat — convert to 0=Mon … 6=Sun
+        let rawWeekday = cal.component(.weekday, from: now)  // 1=Sun
+        let weekday = (rawWeekday + 5) % 7                   // 0=Mon … 6=Sun
+
+        let timeString = String(format: "TIME:%04d-%02d-%02d,%02d:%02d:%02d,%d",
+                                year, month, day, hour, minute, second, weekday)
+
+        print("BLE time sync: \(timeString)")
+        write(timeString, to: timeChar)
+        timeSynced = true
     }
 
     // Parse STATUS string: "R:0,L:42,V1:0,V2:0,SCH:OK,T:14:30"
@@ -182,11 +218,13 @@ extension BLEManager: CBCentralManagerDelegate {
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
         print("BLE: disconnected")
-        bleState   = .disconnected
-        statusChar  = nil
+        bleState     = .disconnected
+        timeSynced   = false
+        statusChar   = nil
         scheduleChar = nil
-        rainChar    = nil
-        manualChar  = nil
+        rainChar     = nil
+        manualChar   = nil
+        timeChar     = nil
 
         if autoReconnect {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -213,7 +251,7 @@ extension BLEManager: CBPeripheralDelegate {
         for service in services {
             if service.uuid == SERVICE_UUID {
                 peripheral.discoverCharacteristics(
-                    [STATUS_UUID, SCHEDULE_UUID, RAIN_UUID, MANUAL_UUID],
+                    [STATUS_UUID, SCHEDULE_UUID, RAIN_UUID, MANUAL_UUID, TIME_UUID],
                     for: service)
             }
         }
@@ -237,6 +275,12 @@ extension BLEManager: CBPeripheralDelegate {
                 peripheral.readValue(for: char)
             case MANUAL_UUID:
                 manualChar = char
+            case TIME_UUID:
+                timeChar = char
+                // Automatically sync time as soon as characteristic is discovered
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.sendCurrentTime()
+                }
             default:
                 break
             }
