@@ -231,7 +231,7 @@ struct ScheduleEntryEditor: View {
                             .fontWeight(.semibold)
 
                         Picker("Minute", selection: $minute) {
-                            ForEach([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55], id: \.self) { m in
+                            ForEach(0..<59, id: \.self) { m in
                                 Text(String(format: "%02d", m)).tag(m)
                             }
                         }
