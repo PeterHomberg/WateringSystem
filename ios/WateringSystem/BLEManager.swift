@@ -132,9 +132,8 @@ class BLEManager: NSObject, ObservableObject {
         let rawWeekday = cal.component(.weekday, from: now)  // 1=Sun
         let weekday = (rawWeekday + 5) % 7                   // 0=Mon … 6=Sun
 
-        let timeString = String(format: "TIME:%04d-%02d-%02d,%02d:%02d:%02d,%d",
-                                year, month, day, hour, minute, second, weekday)
-
+    let timeString = String(format: "TIME:%04d-%02d-%02dT%02d:%02d:%02dW%d",
+                            year, month, day, hour, minute, second, weekday)
         print("BLE time sync: \(timeString)")
         write(timeString, to: timeChar)
         timeSynced = true
