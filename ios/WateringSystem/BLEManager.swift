@@ -7,6 +7,7 @@ private let STATUS_UUID    = CBUUID(string: "12345678-1234-1234-1234-12345678900
 private let SCHEDULE_UUID  = CBUUID(string: "12345678-1234-1234-1234-123456789002")
 private let RAIN_UUID      = CBUUID(string: "12345678-1234-1234-1234-123456789003")
 private let MANUAL_UUID    = CBUUID(string: "12345678-1234-1234-1234-123456789004")
+private let TIME_UUID      = CBUUID(string: "12345678-1234-1234-1234-123456789005")
 
 // ── Connection state ──────────────────────────────────────────────────────────
 enum BLEState {
@@ -21,27 +22,30 @@ enum BLEState {
 class BLEManager: NSObject, ObservableObject {
 
     // Published properties — SwiftUI views update automatically when these change
-    @Published var bleState: BLEState = .disconnected
-    @Published var isRaining: Bool    = false
-    @Published var valve1Open: Bool   = false
-    @Published var valve2Open: Bool   = false
-    @Published var scheduleAck: String = ""          // "SCH:OK" or "SCH:ERR"
-    @Published var lastError: String  = ""
+    @Published var bleState: BLEState  = .disconnected
+    @Published var isRaining: Bool     = false
+    @Published var rainLevel: Int      = 0        // 0–100 from analog sensor
+    @Published var valve1Open: Bool    = false
+    @Published var valve2Open: Bool    = false
+    @Published var scheduleAck: String = ""       // "SCH:OK" or "SCH:ERR"
+    @Published var currentTime: String = ""       // "HH:MM" from RTC
+    @Published var timeSynced: Bool    = false    // true after successful time sync
+    @Published var lastError: String   = ""
 
     // Internal CoreBluetooth objects
-    private var centralManager:   CBCentralManager!
-    private var peripheral:       CBPeripheral?
-    private var statusChar:       CBCharacteristic?
-    private var scheduleChar:     CBCharacteristic?
-    private var rainChar:         CBCharacteristic?
-    private var manualChar:       CBCharacteristic?
+    private var centralManager:  CBCentralManager!
+    private var peripheral:      CBPeripheral?
+    private var statusChar:      CBCharacteristic?
+    private var scheduleChar:    CBCharacteristic?
+    private var rainChar:        CBCharacteristic?
+    private var manualChar:      CBCharacteristic?
+    private var timeChar:        CBCharacteristic?
 
     // Auto-reconnect
     private var autoReconnect = true
 
     override init() {
         super.init()
-        // CBCentralManager triggers centralManagerDidUpdateState when ready
         centralManager = CBCentralManager(delegate: self, queue: nil)
     }
 
@@ -76,20 +80,24 @@ class BLEManager: NSObject, ObservableObject {
     func sendSchedule(_ entries: [ScheduleEntry]) {
         var lines: [String] = ["SCHED:BEGIN"]
         for entry in entries {
-            let days = entry.dayMask.bleString         // e.g. "Mon+Wed+Fri"
+            let days = entry.dayMask.bleString
             let time = String(format: "%02d:%02d", entry.hour, entry.minute)
             let zone = "V\(entry.valve)"
             lines.append("SCHED:\(zone),\(days),\(time),\(entry.durationMin)")
         }
         lines.append("SCHED:END")
 
-        // Small delay between writes so ESP32 has time to process each line
         for (index, line) in lines.enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.15) {
                 self.write(line, to: self.scheduleChar)
                 print("BLE schedule tx: \(line)")
             }
         }
+    }
+
+    // Manually trigger a time sync — exposed for the Settings "Sync Time" button
+    func syncTime() {
+        sendCurrentTime()
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────
@@ -101,23 +109,70 @@ class BLEManager: NSObject, ObservableObject {
             print("BLE write failed — not connected or characteristic missing")
             return
         }
-        p.writeValue(data, for: char, type: .withoutResponse)
+        p.writeValue(data, for: char, type: .withResponse)
     }
 
-    // Parse STATUS string: "R:0,V1:0,V2:0,SCH:OK"
+    // Build and send TIME string from iPhone's current clock
+    // Format: "TIME:2026-05-03,14:32:00,6"
+    //   date:    YYYY-MM-DD
+    //   time:    HH:MM:SS
+    //   weekday: 0=Mon … 6=Sun (matches ESP32 scheduler bitmask convention)
+    private func sendCurrentTime() {
+        let now = Date()
+        let cal = Calendar.current
+
+        let year    = cal.component(.year,   from: now)
+        let month   = cal.component(.month,  from: now)
+        let day     = cal.component(.day,    from: now)
+        let hour    = cal.component(.hour,   from: now)
+        let minute  = cal.component(.minute, from: now)
+        let second  = cal.component(.second, from: now)
+
+        // Calendar.weekday: 1=Sun … 7=Sat — convert to 0=Mon … 6=Sun
+        let rawWeekday = cal.component(.weekday, from: now)  // 1=Sun
+        let weekday = (rawWeekday + 5) % 7                   // 0=Mon … 6=Sun
+
+        let timeString = String(format: "TIME:%04d-%02d-%02d,%02d:%02d:%02d,%d",
+                                year, month, day, hour, minute, second, weekday)
+
+        print("BLE time sync: \(timeString)")
+        write(timeString, to: timeChar)
+        timeSynced = true
+    }
+
+    // Parse STATUS string: "R:0,L:42,V1:0,V2:0,SCH:OK,T:14:30"
+    // Also handles old format without L and T fields for backwards compatibility
     private func parseStatus(_ value: String) {
         let parts = value.split(separator: ",")
         for part in parts {
-            let kv = part.split(separator: ":")
+            let kv = part.split(separator: ":", maxSplits: 1)
             guard kv.count == 2 else { continue }
             let key = String(kv[0])
             let val = String(kv[1])
             switch key {
-            case "R":   isRaining  = val == "1"
-            case "V1":  valve1Open = val == "1"
-            case "V2":  valve2Open = val == "1"
+            case "R":   isRaining   = val == "1"
+            case "L":   rainLevel   = Int(val) ?? 0
+            case "V1":  valve1Open  = val == "1"
+            case "V2":  valve2Open  = val == "1"
             case "SCH": scheduleAck = "SCH:\(val)"
+            case "T":   currentTime = val
             default:    break
+            }
+        }
+    }
+
+    // Parse RAIN characteristic string: "R:0,L:42"
+    private func parseRain(_ value: String) {
+        let parts = value.split(separator: ",")
+        for part in parts {
+            let kv = part.split(separator: ":", maxSplits: 1)
+            guard kv.count == 2 else { continue }
+            let key = String(kv[0])
+            let val = String(kv[1])
+            switch key {
+            case "R": isRaining = val == "1"
+            case "L": rainLevel = Int(val) ?? 0
+            default:  break
             }
         }
     }
@@ -163,13 +218,14 @@ extension BLEManager: CBCentralManagerDelegate {
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
         print("BLE: disconnected")
-        bleState = .disconnected
-        statusChar  = nil
+        bleState     = .disconnected
+        timeSynced   = false
+        statusChar   = nil
         scheduleChar = nil
-        rainChar    = nil
-        manualChar  = nil
+        rainChar     = nil
+        manualChar   = nil
+        timeChar     = nil
 
-        // Auto-reconnect after 2 seconds
         if autoReconnect {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 self.startScanning()
@@ -195,7 +251,7 @@ extension BLEManager: CBPeripheralDelegate {
         for service in services {
             if service.uuid == SERVICE_UUID {
                 peripheral.discoverCharacteristics(
-                    [STATUS_UUID, SCHEDULE_UUID, RAIN_UUID, MANUAL_UUID],
+                    [STATUS_UUID, SCHEDULE_UUID, RAIN_UUID, MANUAL_UUID, TIME_UUID],
                     for: service)
             }
         }
@@ -209,15 +265,22 @@ extension BLEManager: CBPeripheralDelegate {
             switch char.uuid {
             case STATUS_UUID:
                 statusChar = char
-                peripheral.setNotifyValue(true, for: char)   // subscribe to notifications
-                peripheral.readValue(for: char)               // read current value immediately
+                peripheral.setNotifyValue(true, for: char)
+                peripheral.readValue(for: char)
             case SCHEDULE_UUID:
                 scheduleChar = char
             case RAIN_UUID:
                 rainChar = char
                 peripheral.setNotifyValue(true, for: char)
+                peripheral.readValue(for: char)
             case MANUAL_UUID:
                 manualChar = char
+            case TIME_UUID:
+                timeChar = char
+                // Automatically sync time as soon as characteristic is discovered
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.sendCurrentTime()
+                }
             default:
                 break
             }
@@ -239,7 +302,7 @@ extension BLEManager: CBPeripheralDelegate {
                 self.parseStatus(str)
             case RAIN_UUID:
                 print("BLE rain: \(str)")
-                self.isRaining = str == "R:1"
+                self.parseRain(str)
             default:
                 break
             }
