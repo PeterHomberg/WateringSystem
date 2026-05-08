@@ -6,7 +6,7 @@
 #include "scheduler/scheduler.h"
 #include <WebServer.h>
 #include <ArduinoJson.h>
-#include <WiFi.h>
+#include "wifi_manager/wifi_manager.h"
 
 static WebServer server(WEB_SERVER_PORT);
 
@@ -277,7 +277,7 @@ static void handleStatus() {
     getRTCDateString(dateBuf, sizeof(dateBuf));
     doc["time"]         = timeBuf;
     doc["date"]         = dateBuf;
-    doc["ip"]           = WiFi.localIP().toString();
+    doc["ip"]           = getWiFiIP();
     doc["rain"]         = isRaining() ? 1 : 0;
     doc["rain_level"]   = getRainLevel();
     doc["valve1"]       = isValveOpen(1) ? 1 : 0;

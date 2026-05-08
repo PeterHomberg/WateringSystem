@@ -48,7 +48,7 @@ void setup() {
         initWebServer();
     }
 
-    initBLE();
+    //initBLE();
     refreshDisplay();
     Serial.println("Watering system started");
 }
@@ -63,7 +63,7 @@ void loop() {
     if (millis() - lastRain > 2000) {
         lastRain = millis();
         updateRainSensor();
-        updateBLEStatus();
+        //updateBLEStatus();
     }
 
     // ── Scheduler — every 30 s ────────────────────────────────────────────────
@@ -89,6 +89,6 @@ void loop() {
     static unsigned long lastBLE = 0;
     if (millis() - lastBLE > 5000) {
         lastBLE = millis();
-        updateBLEStatus();
+        //updateBLEStatus();
     }
 }

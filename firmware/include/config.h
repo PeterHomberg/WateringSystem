@@ -9,11 +9,18 @@
 #define SCL_PIN         6
 
 // ─── WiFi ─────────────────────────────────────────────────
-#define WIFI_SSID              "CPE2G_2G0"      // ← your network name
-#define WIFI_PASSWORD          "zllinkcpe1234560"  // ← your password
+#define WIFI_SSID              "Princess Sissy"      // ← your network name
+#define WIFI_PASSWORD          "XialovePeter44"  // ← your password
 
 //#define WIFI_SSID              "Rainy"      // ← your network name
 //#define WIFI_PASSWORD          "@Gehlenberg2"  // ← your password
+#define WIFI_STATIC_IP               "10.0.0.45"
+#define WIFI_GATEWAY              "10.0.0.1"
+#define WIFI_SUBNET              "255.255.255.0"
+#define WIFI_MAC  {0xE8, 0x3D, 0xC1, 0x8D, 0xCA, 0x90}
+
+
+
 
 
 #define WIFI_CONNECT_TIMEOUT_MS  30000         // give up after 15 s → BLE-only
