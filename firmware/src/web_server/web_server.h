@@ -1,8 +1,9 @@
 #pragma once
 #include <Arduino.h>
 
-// Serves the dashboard on port WEB_SERVER_PORT (default 80).
-// Uses the built-in synchronous WebServer — no AsyncTCP needed.
+// Async HTTP server on port WEB_SERVER_PORT (default 80).
+// Uses ESPAsyncWebServer — no loop() polling needed.
+// Safe to call initWebServer() multiple times (e.g. after WiFi reconnect).
 //
 // GET  /              → dashboard HTML
 // GET  /api/status    → JSON snapshot
@@ -13,5 +14,6 @@
 
 void initWebServer();
 
-// Call from loop() — synchronous server requires polling
-void handleWebServer();
+// handleWebServer() no longer needed — AsyncWebServer runs on background task.
+// Kept as empty stub for backwards compatibility with any existing loop() calls.
+inline void handleWebServer() {}

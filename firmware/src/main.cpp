@@ -27,6 +27,7 @@ static void refreshDisplay() {
 void setup() {
     Serial.begin(115200);
 
+    // ── NVS init ──────────────────────────────────────────────────────────────
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
         ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -35,35 +36,34 @@ void setup() {
     }
     Serial.println("NVS initialized");
 
-    initWiFi();                    // ← moved here, before anything else
+    // ── WiFi — connect early; initWebServer() is called inside initWiFi() ────
+    initWiFi();
 
-    Wire.begin(SDA_PIN, SCL_PIN);
+    // ── Peripherals ───────────────────────────────────────────────────────────
+    // Wire.begin() is called inside initDisplay() — do not call it here again
     initDisplay();
     initRTC();
     initValves();
     initRainSensor();
     initScheduler();
 
-    if (isWiFiConnected()) {
-        initWebServer();
-    }
+    // ── BLE ───────────────────────────────────────────────────────────────────
+    initBLE();
 
-    //initBLE();
     refreshDisplay();
     Serial.println("Watering system started");
 }
+
 void loop() {
-    // ── Web server — must be polled every loop iteration ─────────────────────
-    if (isWiFiConnected()) {
-        handleWebServer();
-    }
+    // ── WiFi reconnect — detects dropout/reconnect, restarts web server ───────
+    checkWiFiReconnect();
 
     // ── Rain sensor — every 2 s ───────────────────────────────────────────────
     static unsigned long lastRain = 0;
     if (millis() - lastRain > 2000) {
         lastRain = millis();
         updateRainSensor();
-        //updateBLEStatus();
+        updateBLEStatus();
     }
 
     // ── Scheduler — every 30 s ────────────────────────────────────────────────
@@ -85,10 +85,10 @@ void loop() {
         refreshDisplay();
     }
 
-    // ── BLE status — every 5 s ────────────────────────────────────────────────
+    // ── BLE status notify — every 5 s ─────────────────────────────────────────
     static unsigned long lastBLE = 0;
     if (millis() - lastBLE > 5000) {
         lastBLE = millis();
-        //updateBLEStatus();
+        updateBLEStatus();
     }
 }

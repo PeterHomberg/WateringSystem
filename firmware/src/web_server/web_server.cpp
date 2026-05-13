@@ -4,11 +4,12 @@
 #include "rain/rain.h"
 #include "rtc/rtc.h"
 #include "scheduler/scheduler.h"
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
-#include "wifi_manager/wifi_manager.h"
+#include <WiFi.h>
 
-static WebServer server(WEB_SERVER_PORT);
+static AsyncWebServer server(WEB_SERVER_PORT);
+static bool serverStarted = false;
 
 // Stores the last schedule POSTed as JSON so GET /api/schedule can return it.
 static String g_scheduleJson = "[]";
@@ -246,83 +247,81 @@ loadSchedule();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-static void sendJson(int code, JsonDocument& doc) {
+static void sendJson(AsyncWebServerRequest* req, int code, JsonDocument& doc) {
     String out;
     serializeJson(doc, out);
-    server.send(code, "application/json", out);
+    req->send(code, "application/json", out);
 }
 
-static void sendOk() {
-    StaticJsonDocument<32> d;
+static void sendOk(AsyncWebServerRequest* req) {
+    JsonDocument d;
     d["ok"] = true;
-    sendJson(200, d);
+    sendJson(req, 200, d);
 }
 
-static void sendErr(const char* msg, int code = 400) {
-    StaticJsonDocument<64> d;
-    d["ok"] = false; d["error"] = msg;
-    sendJson(code, d);
+static void sendErr(AsyncWebServerRequest* req, const char* msg, int code = 400) {
+    JsonDocument d;
+    d["ok"]    = false;
+    d["error"] = msg;
+    sendJson(req, code, d);
 }
 
-// ── Handlers ──────────────────────────────────────────────────────────────────
+// ── Route handlers ────────────────────────────────────────────────────────────
 
-static void handleRoot() {
-    server.send_P(200, "text/html", DASHBOARD_HTML);
+static void handleRoot(AsyncWebServerRequest* req) {
+    req->send_P(200, "text/html", DASHBOARD_HTML);
 }
 
-static void handleStatus() {
-    StaticJsonDocument<200> doc;
+static void handleStatus(AsyncWebServerRequest* req) {
+    JsonDocument doc;
     char timeBuf[8], dateBuf[14];
     getRTCTimeString(timeBuf, sizeof(timeBuf));
     getRTCDateString(dateBuf, sizeof(dateBuf));
     doc["time"]         = timeBuf;
     doc["date"]         = dateBuf;
-    doc["ip"]           = getWiFiIP();
+    doc["ip"]           = WiFi.localIP().toString();
     doc["rain"]         = isRaining() ? 1 : 0;
     doc["rain_level"]   = getRainLevel();
     doc["valve1"]       = isValveOpen(1) ? 1 : 0;
     doc["valve2"]       = isValveOpen(2) ? 1 : 0;
     doc["schedule_ack"] = getScheduleAck();
-    sendJson(200, doc);
+    sendJson(req, 200, doc);
 }
 
-static void handleValvePost() {
-    if (!server.hasArg("plain")) { sendErr("no body"); return; }
-    StaticJsonDocument<64> body;
-    if (deserializeJson(body, server.arg("plain"))) { sendErr("bad JSON"); return; }
+static void handleValvePost(AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+    JsonDocument body;
+    if (deserializeJson(body, data, len)) { sendErr(req, "bad JSON"); return; }
     int  v    = body["valve"] | 0;
     bool open = body["open"]  | false;
-    if (v != 1 && v != 2) { sendErr("valve must be 1 or 2"); return; }
+    if (v != 1 && v != 2) { sendErr(req, "valve must be 1 or 2"); return; }
     open ? openValve(v) : closeValve(v);
-    sendOk();
+    sendOk(req);
 }
 
-static void handleTimePost() {
-    if (!server.hasArg("plain")) { sendErr("no body"); return; }
-    StaticJsonDocument<128> body;
-    if (deserializeJson(body, server.arg("plain"))) { sendErr("bad JSON"); return; }
+static void handleTimePost(AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+    JsonDocument body;
+    if (deserializeJson(body, data, len)) { sendErr(req, "bad JSON"); return; }
     const char* dt = body["datetime"] | "";
     int weekday    = body["weekday"]  | -1;
     if (strlen(dt) < 19 || weekday < 0 || weekday > 6) {
-        sendErr("invalid fields"); return;
+        sendErr(req, "invalid fields"); return;
     }
     String s = String("TIME:") + dt + "W" + String(weekday);
     s.replace(' ', 'T');
-    if (!setRTCTimeFromString(s)) { sendErr("RTC write failed"); return; }
-    sendOk();
+    if (!setRTCTimeFromString(s)) { sendErr(req, "RTC write failed"); return; }
+    sendOk(req);
 }
 
-static void handleScheduleGet() {
-    server.send(200, "application/json", g_scheduleJson);
+static void handleScheduleGet(AsyncWebServerRequest* req) {
+    req->send(200, "application/json", g_scheduleJson);
 }
 
-static void handleSchedulePost() {
-    if (!server.hasArg("plain")) { sendErr("no body"); return; }
-    DynamicJsonDocument body(1024);
-    if (deserializeJson(body, server.arg("plain"))) { sendErr("bad JSON"); return; }
-    if (!body.is<JsonArray>())                      { sendErr("expected array"); return; }
+static void handleSchedulePost(AsyncWebServerRequest* req, uint8_t* data, size_t len, size_t, size_t) {
+    JsonDocument body;
+    if (deserializeJson(body, data, len))  { sendErr(req, "bad JSON"); return; }
+    if (!body.is<JsonArray>())             { sendErr(req, "expected array"); return; }
     JsonArray arr = body.as<JsonArray>();
-    if (arr.size() > 6)                             { sendErr("max 6 entries"); return; }
+    if (arr.size() > 6)                    { sendErr(req, "max 6 entries"); return; }
 
     const char* dayNames[] = {"Mon","Tue","Wed","Thu","Fri","Sat","Sun"};
     processScheduleLine("SCHED:BEGIN");
@@ -349,28 +348,47 @@ static void handleSchedulePost() {
 
     if (strcmp(getScheduleAck(), "SCH:OK") == 0) {
         serializeJson(body, g_scheduleJson);
-        sendOk();
+        sendOk(req);
     } else {
-        sendErr("schedule parse error");
+        sendErr(req, "schedule parse error");
     }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 void initWebServer() {
+    if (serverStarted) {
+        // AsyncWebServer cannot be re-initialised — routes are already registered.
+        // Just log the reconnect; the server is still running.
+        Serial.printf("Web server already running on port %d\n", WEB_SERVER_PORT);
+        return;
+    }
+
     server.on("/",             HTTP_GET,  handleRoot);
     server.on("/api/status",   HTTP_GET,  handleStatus);
-    server.on("/api/valve",    HTTP_POST, handleValvePost);
-    server.on("/api/time",     HTTP_POST, handleTimePost);
     server.on("/api/schedule", HTTP_GET,  handleScheduleGet);
-    server.on("/api/schedule", HTTP_POST, handleSchedulePost);
-    server.onNotFound([]() {
-        server.send(404, "text/plain", "Not found");
-    });
-    server.begin();
-    Serial.printf("Web server started on port %d\n", WEB_SERVER_PORT);
-}
 
-void handleWebServer() {
-    server.handleClient();
+    // POST handlers use the body callback signature required by AsyncWebServer
+    server.on("/api/valve", HTTP_POST,
+        [](AsyncWebServerRequest* req){},   // request handler (unused — body arrives below)
+        nullptr,                            // upload handler
+        handleValvePost);
+
+    server.on("/api/time", HTTP_POST,
+        [](AsyncWebServerRequest* req){},
+        nullptr,
+        handleTimePost);
+
+    server.on("/api/schedule", HTTP_POST,
+        [](AsyncWebServerRequest* req){},
+        nullptr,
+        handleSchedulePost);
+
+    server.onNotFound([](AsyncWebServerRequest* req) {
+        req->send(404, "text/plain", "Not found");
+    });
+
+    server.begin();
+    serverStarted = true;
+    Serial.printf("Web server started on port %d\n", WEB_SERVER_PORT);
 }

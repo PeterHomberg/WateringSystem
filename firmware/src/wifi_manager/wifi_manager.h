@@ -1,9 +1,14 @@
 #pragma once
 #include <Arduino.h>
 
-// WiFi manager using ESP-IDF API directly — bypasses Arduino WiFi library
-// entirely to avoid state machine issues on ESP32-C3.
-
+// Attempts to connect using credentials in config.h.
+// Blocks until connected or WIFI_CONNECT_TIMEOUT_MS — then returns.
+// System continues in BLE-only mode if connection fails.
+// Auto-reconnect is enabled — call checkWiFiReconnect() from loop().
 void initWiFi();
+
+// Call from loop() — restarts web server automatically on reconnect.
+void checkWiFiReconnect();
+
 bool   isWiFiConnected();
 String getWiFiIP();
