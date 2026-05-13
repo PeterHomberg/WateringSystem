@@ -4,6 +4,9 @@
 .vscode/launch.json
 .vscode/ipch
 
+# ZIP files (firmware exports etc.)
+*.zip
+
 # Xcode
 *.xcodeproj/*
 !*.xcodeproj/project.pbxproj
