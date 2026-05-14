@@ -27,6 +27,9 @@
 #define VALVE1_PIN      4       // GPIO3
 #define VALVE2_PIN      5       // GPIO4
 
+#define OPEN 0x1
+#define CLOSE 0x0
+
 // ─── Rain sensor ──────────────────────────────────────────
 #define RAIN_PIN_DIGITAL    2   // GPIO2 — active LOW (LOW = raining)
 #define RAIN_PIN_ANALOG     1   // GPIO1 — ADC1_CH0, lower = wetter
