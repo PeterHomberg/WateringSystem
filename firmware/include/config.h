@@ -9,8 +9,13 @@
 #define SCL_PIN         9       // GPIO9 — ESP32-S3 devKitC-1
 
 // ─── WiFi ─────────────────────────────────────────────────
-#define WIFI_SSID              "Rainy"
-#define WIFI_PASSWORD          "@Gehlenberg2"
+//#define WIFI_SSID              "Rainy"
+//#define WIFI_PASSWORD          "@Gehlenberg2"
+
+#define WIFI_SSID              "TP-LINK_2.4G_AAE2"
+#define WIFI_PASSWORD          "PeterloveXia@2026"
+
+
 #define WIFI_CONNECT_TIMEOUT_MS  15000
 #define WEB_SERVER_PORT        80
 

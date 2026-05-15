@@ -1,14 +1,14 @@
 # Watering System — Migration Log & Current Status
 
-## Session Date: 2026-05-12
+## Last updated: 2026-05-15
 
 ---
 
 ## Overview
 
-This document records the problems encountered and solutions applied during
-migration Step 1 of the ESP32-C3 → ESP32-S3 hardware migration:
-**`platformio.ini` + `sdkconfig.defaults` — get the board compiling and flashing.**
+This document records all problems encountered and solutions applied during the
+ESP32-C3 → ESP32-S3 hardware migration, and the current status of all migration
+steps as reflected in the source code.
 
 ---
 
@@ -23,7 +23,7 @@ UnknownBoard: Unknown board ID 'esp32-s3-devkitc-1-n16r8'
 
 **Cause:** There is no separate PlatformIO board ID for the N16R8 variant.
 PlatformIO uses a single `esp32-s3-devkitc-1` ID for all S3 devKitC-1 variants,
-with the flash and PSRAM configured via override settings.
+with flash and PSRAM configured via override settings.
 
 **Fix:** Keep `board = esp32-s3-devkitc-1` and override flash/PSRAM explicitly:
 ```ini
@@ -107,9 +107,7 @@ konnte nicht gefunden werden.
 **Cause:** The pioarduino `stable` toolchain ZIP contains both a `package.json`
 file and an `xtensa-esp-elf/` folder at the root level. The `idf_tools.py`
 `do_strip_container_dirs()` function expects exactly one entry at the root and
-crashes when it finds two. This leaves the compiler buried one level too deep
-at `toolchain-xtensa-esp-elf\xtensa-esp-elf\bin\` instead of
-`toolchain-xtensa-esp-elf\bin\`.
+crashes when it finds two.
 
 **Root fix:** Switch from the floating `stable` tag to a **pinned release**
 `53.03.11` which uses an older packaging format without this issue:
@@ -122,10 +120,9 @@ platform = https://github.com/pioarduino/platform-espressif32/releases/download/
 1. Manually moved the contents of `xtensa-esp-elf\` up one level using
    PowerShell `Move-Item`.
 2. Patched `idf_tools.py` line 1635 to replace the `do_strip_container_dirs()`
-   call with `pass` — this prevents the crash but leaves the nested structure
-   in place, which still broke the build.
-3. Added picolibc include path to `build_flags` — this caused new conflicts
-   with the ESP32 Arduino newlib headers and was reverted.
+   call with `pass` — prevents the crash but leaves the nested structure broken.
+3. Added picolibc include path to `build_flags` — caused conflicts with ESP32
+   Arduino newlib headers and was reverted.
 
 **Final fix:** Pinning to release `53.03.11` resolved all toolchain issues
 cleanly without any manual patching.
@@ -140,28 +137,55 @@ src/display/display.cpp:5:10: fatal error: Adafruit_SSD1306.h: No such file or d
 ```
 
 **Cause:** `display.cpp` still included the old SSD1306 driver which was
-intentionally removed from `lib_deps` as part of the SH1106 migration.
-The display module rewrite (migration Step 2) had not yet been done.
+intentionally removed from `lib_deps`. The display module rewrite had not yet
+been done.
 
-**Fix:** Replaced `display.cpp` and `display.h` with a stub implementation
-that compiles cleanly and prints a serial message, allowing the rest of the
-firmware to build while the SH1106/U8g2 rewrite is pending.
-
----
-
-### Warnings (non-blocking, to be fixed in later steps)
-
-These appeared in the successful build and are noted for future cleanup:
-
-| Warning | Location | Fix planned in |
-|---|---|---|
-| `StaticJsonDocument` deprecated — use `JsonDocument` | `web_server.cpp` | Migration Step 4 (web server rewrite) |
-| `DynamicJsonDocument` deprecated — use `JsonDocument` | `web_server.cpp` | Migration Step 4 |
-| `NimBLEService::start()` deprecated — no effect | `ble_server.cpp` | Minor cleanup pass |
+**Fix:** Replaced `display.cpp` and `display.h` with a full U8g2/SH1106
+implementation (see Problem 7 below — display rewrite and temporary stub were
+done in the same session).
 
 ---
 
-## Final platformio.ini (working)
+### Problem 7 — WiFi connection fails against TP-LINK CPE210 (status 6)
+
+**Session date: 2026-05-15**
+
+**Symptom:** ESP32-S3 connects successfully to the house router ("Rainy") but
+times out on every connection attempt to the rooftop TP-LINK CPE210
+(`TP-LINK_2.4G_AAE2`). Status code 6 (`WL_DISCONNECTED`) on every attempt.
+
+**Diagnosis steps:**
+
+1. `netsh wlan show networks` on Windows confirmed the CPE210 is visible at
+   99% signal on channel 11 — ruled out range and channel issues.
+2. Added scan block to firmware — ESP32 could see the SSID, Auth type 4
+   (`WIFI_AUTH_WPA2_WPA3_PSK`), RSSI = -8 dBm.
+3. Enabled `ESP_LOG_VERBOSE` + `CORE_DEBUG_LEVEL=5` — IDF log showed:
+   ```
+   Reason: 15 - 4WAY_HANDSHAKE_TIMEOUT
+   ```
+   on every attempt. Association succeeded; WPA2 4-way handshake timed out.
+
+**Root cause:** Password mismatch between `config.h` and the CPE210.
+The 4-way handshake timeout at reason 15 is the standard symptom when the PSK
+derived from the passphrase does not match the AP's stored key.
+
+**Fix:** Corrected `WIFI_PASSWORD` in `config.h` to match the CPE210's actual
+passphrase. Connected on first attempt after the fix.
+
+**Other changes made during diagnosis (retained as improvements):**
+
+- `initWiFi()` now uses a **3-attempt retry loop** with `WiFi.disconnect(true)`
+  + 100 ms reset between attempts, making the connection more robust against
+  transient association failures.
+- `wifi_config_t` with `threshold.authmode = WIFI_AUTH_WPA2_PSK` and
+  `pmf_cfg.capable = false` — forces WPA2-only association, preventing silent
+  failures if the AP advertises WPA2/WPA3 mixed mode in future.
+- `<esp_wifi.h>` added to includes.
+
+---
+
+## Final platformio.ini (current)
 
 ```ini
 [platformio]
@@ -183,8 +207,6 @@ board_upload.maximum_size = 16777216
 build_flags =
     -I include
     -DBOARD_HAS_PSRAM
-    -DARDUINO_USB_MODE=1
-    -DARDUINO_USB_CDC_ON_BOOT=1
 
 board_build.sdkconfig   = sdkconfig.defaults
 board_build.partitions  = partitions.csv
@@ -197,27 +219,42 @@ lib_deps =
     mathieucarbou/AsyncTCP
     adafruit/RTClib
     bblanchon/ArduinoJson
+
+upload_port = COM7
+monitor_port = COM7
 ```
+
+**Notes vs previous version:**
+- `-DARDUINO_USB_MODE=1` and `-DARDUINO_USB_CDC_ON_BOOT=1` removed from
+  `build_flags` — these are now handled by `sdkconfig.defaults` entries
+  (`CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y`) and do not need to be duplicated.
+- `upload_port` and `monitor_port` pinned to `COM7`.
 
 ---
 
-## Final sdkconfig.defaults (working)
+## Final sdkconfig.defaults (current)
 
-```
+```ini
+# --- BLE -----------------------------------------------------------------------
+# Legacy advertising required — iOS cannot see extended (BT5) advertisements.
 CONFIG_BT_ENABLED=y
 CONFIG_BT_BLE_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_EXT_ADV=n
 CONFIG_BT_NIMBLE_MAX_CONNECTIONS=3
 
+# --- WiFi ----------------------------------------------------------------------
 CONFIG_ESP_WIFI_ENABLED=y
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=4
 CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=8
 
+# --- lwIP — larger stack required by AsyncWebServer ----------------------------
 CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=4096
 
+# --- USB serial (ESP32-S3 specific) --------------------------------------------
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
+# --- PSRAM — OPI mode for N16R8 variant ----------------------------------------
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 ```
@@ -231,7 +268,8 @@ CONFIG_SPIRAM_SPEED_80M=y
 ```
 PLATFORM: Espressif 32 > Espressif ESP32-S3-DevKitC-1 (16MB Flash)
 HARDWARE: ESP32S3 240MHz
-framework-arduinoespressif32 @ 3.3.7
+ESP-IDF: v5.3.2
+Arduino: 3.1.1
 ```
 
 ### Migration steps status
@@ -239,24 +277,31 @@ framework-arduinoespressif32 @ 3.3.7
 | Step | Description | Status |
 |---|---|---|
 | 1 | `platformio.ini` + `sdkconfig.defaults` — board compiling | ✅ Complete |
-| 2 | Rewrite `display/` — SSD1306 → U8g2/SH1106 | ⏳ Next |
-| 3 | Rewrite `wifi_manager/` — add `setAutoReconnect`, reconnect loop | ⏳ Pending |
-| 4 | Migrate `web_server/` — sync `WebServer` → `AsyncWebServer` | ⏳ Pending |
+| 2 | Rewrite `display/` — SSD1306 → U8g2/SH1106 | ✅ Complete |
+| 3 | Rewrite `wifi_manager/` — WPA2 fix, retry loop, reconnect | ✅ Complete |
+| 4 | Migrate `web_server/` — sync `WebServer` → `AsyncWebServer` | ✅ Complete |
 | 5 | Integration test — all modules running together | ⏳ Pending |
-| 6 | Flash to hardware and verify serial monitor output | ⏳ Pending |
+| 6 | Flash to hardware and verify all peripherals | ⏳ Pending |
 
 ### Module status
 
 | Module | Compiles | Hardware tested | Notes |
 |---|---|---|---|
-| `ble` | ✅ | ⏳ | One deprecation warning (`pService->start()`) — harmless |
-| `valves` | ✅ | ⏳ | No changes needed |
-| `rain` | ✅ | ⏳ | No changes needed |
-| `rtc` | ✅ | ⏳ | No changes needed |
-| `scheduler` | ✅ | ⏳ | No changes needed |
-| `wifi_manager` | ✅ | ⏳ | Rewrite pending (Step 3) |
-| `web_server` | ✅ | ⏳ | Deprecated ArduinoJson calls — rewrite pending (Step 4) |
-| `display` | ✅ | ⏳ | **Stub only** — SH1106/U8g2 rewrite pending (Step 2) |
+| `ble` | ✅ | ⏳ | Visible on iOS via nRF Connect; all 5 characteristics working |
+| `valves` | ✅ | ⏳ | No changes needed from C3 version |
+| `rain` | ✅ | ⏳ | No changes needed from C3 version |
+| `rtc` | ✅ | ⏳ | No changes needed from C3 version |
+| `scheduler` | ✅ | ⏳ | No changes needed from C3 version |
+| `wifi_manager` | ✅ | ✅ | Connected to CPE210 — IP 10.0.0.5 confirmed in serial monitor |
+| `web_server` | ✅ | ⏳ | AsyncWebServer + full dashboard HTML; all endpoints implemented |
+| `display` | ✅ | ⏳ | Full U8g2/SH1106 rewrite complete; hardware render not yet verified |
+
+### Warnings (non-blocking)
+
+All `StaticJsonDocument` / `DynamicJsonDocument` deprecation warnings from the
+previous session have been resolved — `web_server.cpp` now uses `JsonDocument`
+throughout. The `NimBLEService::start()` deprecation warning in `ble_server.cpp`
+remains but is harmless.
 
 ---
 
@@ -278,3 +323,18 @@ framework-arduinoespressif32 @ 3.3.7
 
 - **Always use `py -3.12 -m platformio`** — not just `pio` — to ensure
   Python 3.12 is used (3.9 and 3.14 do not work on this system).
+
+- **CPE210 WiFi password** — the correct passphrase is stored in `config.h`
+  as `WIFI_PASSWORD`. A mismatch produces `Reason: 15 - 4WAY_HANDSHAKE_TIMEOUT`
+  in the IDF verbose log, not a generic connection failure message.
+
+- **AsyncWebServer cannot be re-initialised** — `initWebServer()` is guarded
+  by a `serverStarted` flag. On WiFi reconnect the server keeps running; only
+  the reconnect IP is logged. Do not delete and recreate the server object.
+
+- **`Wire.begin()` is called inside `initDisplay()`** — do not call it again
+  in `main.cpp` or `initRTC()`. Both I2C devices share the same bus instance.
+
+- **`config.h` contains two SSID definitions** — `Rainy` (house router) is
+  commented out; `TP-LINK_2.4G_AAE2` (CPE210) is active. Swap comments to
+  switch networks during development.
